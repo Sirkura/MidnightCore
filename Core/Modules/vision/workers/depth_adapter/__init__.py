@@ -1,0 +1,1 @@
+# Depth adapter module for lightweight depth estimation

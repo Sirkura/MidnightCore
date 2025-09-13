@@ -1,0 +1,45 @@
+# Qwen Chat Bot Local Requirements
+# ================================
+# Local-only dependencies - no external AI services required
+# Adapted from VRChat-AI-Bot to remove CharacterAI/Ollama dependencies
+
+# Speech Recognition and TTS
+SpeechRecognition>=3.10.0
+gTTS>=2.3.0
+pydub>=0.25.1
+
+# Audio handling  
+pygame>=2.5.0
+
+# VRChat Integration
+python-osc>=1.8.0
+vrchatapi>=1.4.8
+
+# Audio metadata
+mutagen>=1.47.0
+
+# Text processing
+syllables>=1.0.7
+
+# Standard library enhancements (usually included with Python)
+# asyncio - built-in
+# threading - built-in
+# subprocess - built-in
+# time - built-in
+# random - built-in
+# re - built-in
+
+# Optional: Enhanced audio processing
+# If you want more advanced audio features, uncomment these:
+# librosa>=0.10.0
+# soundfile>=0.12.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0  # For testing
+# black>=23.0.0  # Code formatting
+
+# System requirements:
+# - Python 3.8+
+# - VB-Audio Virtual Cable (or similar virtual audio device)
+# - llama.cpp installation at: G:/Experimental/llama.cpp/build/bin/Release/llama-cli.exe
+# - Qwen 3 model at: G:/Experimental/ComfyUI_windows_portable/ComfyUI/models/llm_gguf/Qwen3-8B-Q4_K_M.gguf

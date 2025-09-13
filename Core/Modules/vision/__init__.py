@@ -1,0 +1,1 @@
+# MidnightCore Vision Module Package

@@ -1,0 +1,24 @@
+# Python bytecode
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore Src Chatbots
+Core/Modules/Social/VRChat-AI-Bot-main/
+Core/Modules/Social/VRChat-AI-Bot-ollama/
+
+# Ignore Python virtual environment
+Core/Common/.venv/
+
+# Logs (ignore everything inside, keep the folder)
+Core/Engine/Logging/**
+!Core/Engine/Logging/.gitkeep
+
+# Captures (ignore everything inside, keep the folder)
+Core/Engine/Captures/**
+!Core/Engine/Captures/.gitkeep
+
+# models (ignore everything inside, keep the folder)
+Core/Engine/models/**
+!Core/Engine/models/.gitkeep
+
