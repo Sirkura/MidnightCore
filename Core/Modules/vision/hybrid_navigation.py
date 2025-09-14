@@ -28,6 +28,18 @@ from typing import Optional, Dict, List, Tuple, Any
 
 # Import existing modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Import depth visualizer
+try:
+    from depth_visualizer import save_navigation_decision_image, should_save_decision_image
+    DEPTH_VISUALIZATION_AVAILABLE = True
+except ImportError as e:
+    print(f"WARNING: Depth visualization not available: {e}")
+    DEPTH_VISUALIZATION_AVAILABLE = False
+    def save_navigation_decision_image(*args, **kwargs):
+        pass
+    def should_save_decision_image(*args, **kwargs):
+        return False
 sys.path.append(current_dir)
 sys.path.append(os.path.join(current_dir, '..', '..', 'Engine'))
 
@@ -314,12 +326,13 @@ class HybridNavigationSystem:
             'threats': threats,
             'region_stats': region_stats,
             'needs_florence_verification': needs_florence,
+            'raw_depth_map': depth_map,  # Include for visualization
             'temporal_buffers_ready': all(len(buf) >= 3 for buf in self.region_buffers.values()),
             'analysis_method': 'regional_percentiles_with_temporal_smoothing',
             'measurements': {
-                'front_m': forward_path['smoothed_median'],
-                'left_m': left_side['smoothed_median'],
-                'right_m': right_side['smoothed_median'],
+                'front_m': float(forward_path['smoothed_median']),
+                'left_m': float(left_side['smoothed_median']),
+                'right_m': float(right_side['smoothed_median']),
                 'edge_risk': 1.0 if any(t['type'] == 'potential_cliff' for t in threats) else 0.0,
                 'ttc_s': float('inf'),  # Not calculated in enhanced mode
                 'temporal_buffers_ready': all(len(buf) >= 3 for buf in self.region_buffers.values())
@@ -650,6 +663,15 @@ class HybridNavigationSystem:
                     priority='CRITICAL',
                     florence_used=florence_verification['verification_available']
                 )
+                
+                # Save depth visualization for major cliff danger decision
+                if DEPTH_VISUALIZATION_AVAILABLE and should_save_decision_image('STOP_CLIFF_DANGER'):
+                    raw_depth_map = depth_analysis.get('raw_depth_map')
+                    if raw_depth_map is not None:
+                        threat_summary = f"{len(verified_cliff_threats)} verified cliff danger(s) detected"
+                        save_navigation_decision_image(
+                            raw_depth_map, 'STOP_CLIFF_DANGER', tick_id, frame_id, threat_summary
+                        )
             
             return result
         elif cliff_threats:
@@ -715,6 +737,15 @@ class HybridNavigationSystem:
                     priority='LOW',
                     florence_used=florence_verification['verification_available']
                 )
+                
+                # Save depth visualization for major forward movement decision
+                if DEPTH_VISUALIZATION_AVAILABLE and should_save_decision_image('MOVE_FORWARD_CLEAR'):
+                    raw_depth_map = depth_analysis.get('raw_depth_map')
+                    if raw_depth_map is not None:
+                        threat_summary = "Path clear - no threats detected with enhanced analysis"
+                        save_navigation_decision_image(
+                            raw_depth_map, 'MOVE_FORWARD_CLEAR', tick_id, frame_id, threat_summary
+                        )
             
             return result
 

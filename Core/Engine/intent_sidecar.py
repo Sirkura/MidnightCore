@@ -58,6 +58,12 @@ def extract_intent_sidecar(natural_reasoning: str, spatial_context: str = "") ->
         _last_rule_tag = "down"
         return "I want to look down to check below"
     
+    # HIGH PRIORITY: Center intrigue should override general scanning
+    if spatial_context and re.search(r'\bCENTER\b', spatial_context) and "HIGHLY INTRIGUING" in spatial_context:
+        print("SIDECAR: HIGH PRIORITY - CENTER intrigue detected, overriding scan intent")
+        _last_rule_tag = "forward"
+        return "I want to move forward to explore"
+    
     # General scanning intent (medium priority)
     if re.search(r'\b(look around|scan|check around|examine surroundings|explore area)\b', text):
         print("SIDECAR: General scan intent - choosing left")
@@ -82,18 +88,16 @@ def extract_intent_sidecar(natural_reasoning: str, spatial_context: str = "") ->
     
     # Spatial context fallback - use intrigue to guide direction when reasoning is weak
     if spatial_context:
-        if "LEFT" in spatial_context and "HIGHLY INTRIGUING" in spatial_context:
+        # Use word boundaries to prevent substring false matches (e.g., "buiLDing" matching "LEFT")
+        if re.search(r'\bLEFT\b', spatial_context) and "HIGHLY INTRIGUING" in spatial_context:
             print("SIDECAR: Spatial context fallback - LEFT intrigue detected")
             _last_rule_tag = "left"
             return "I want to look left to scan the area"
-        elif "RIGHT" in spatial_context and "HIGHLY INTRIGUING" in spatial_context:
+        elif re.search(r'\bRIGHT\b', spatial_context) and "HIGHLY INTRIGUING" in spatial_context:
             print("SIDECAR: Spatial context fallback - RIGHT intrigue detected") 
             _last_rule_tag = "right"
             return "I want to look right to check my surroundings"
-        elif "CENTER" in spatial_context and "HIGHLY INTRIGUING" in spatial_context:
-            print("SIDECAR: Spatial context fallback - CENTER intrigue detected")
-            _last_rule_tag = "forward"
-            return "I want to move forward to explore"
+        # CENTER intrigue moved to high priority section above
     
     # Final default: safe scanning instead of random forward movement
     print("SIDECAR: No clear intent detected - defaulting to safe scan")

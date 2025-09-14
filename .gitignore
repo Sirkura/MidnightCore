@@ -3,12 +3,16 @@
 *.py[cod]
 *$py.class
 
+# Python virtual environments
+Core/Common/.venv/
+.env
+.venv/
+venv/
+ENV/
+
 # Ignore Src Chatbots
 Core/Modules/Social/VRChat-AI-Bot-main/
 Core/Modules/Social/VRChat-AI-Bot-ollama/
-
-# Ignore Python virtual environment
-Core/Common/.venv/
 
 # Logs (ignore everything inside, keep the folder)
 Core/Engine/Logging/**
@@ -17,8 +21,87 @@ Core/Engine/Logging/**
 # Captures (ignore everything inside, keep the folder)
 Core/Engine/Captures/**
 !Core/Engine/Captures/.gitkeep
+!Core/Engine/Captures/Navigation/.gitkeep
 
-# models (ignore everything inside, keep the folder)
+# Models (ignore files, keep structure and dependency info)
+Core/Models/**
+!Core/Models/.gitkeep
+!Core/Models/README.md
+!Core/Models/requirements.txt
 Core/Engine/models/**
 !Core/Engine/models/.gitkeep
+
+# Cache and temporary files
+Core/Common/cache/**
+!Core/Common/cache/.gitkeep
+Core/Common/Cache/**
+!Core/Common/Cache/.gitkeep
+*.tmp
+*.temp
+.temp/
+__temp__/
+
+# System and editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Credentials and sensitive data
+**/credentials*.py
+**/secrets*.py
+**/config_local*.py
+*.key
+*.pem
+*.cert
+
+# Large data files
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.onnx
+*.pt
+*.pth
+*.bin
+
+# Windows specific
+*.lnk
+
+# Python specific additions
+*.egg-info/
+dist/
+build/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# Batch files (exclude personal convenience scripts, keep essential ones)
+*.bat
+!START_BETA.bat
+!STOP_BETA.bat
+
+# Output and generated files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.log
+*.out
+*.zip
+*-main.zip
+
+# JSON logs and data files
+*.ndjson
+**/events.ndjson
+**/spatial_state.json
+
+# IDE and development files
+*.pyc
+.vscode/settings.json
 

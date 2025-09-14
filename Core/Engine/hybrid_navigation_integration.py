@@ -52,22 +52,50 @@ def check_movement_safety(brain_instance, action_text: str, vision_state: dict =
     Returns:
         Tuple of (is_safe, safety_decision, modified_action)
     """
+    print(f"[HYBRID NAV DEBUG] check_movement_safety called with:")
+    print(f"[HYBRID NAV DEBUG]   action_text: {action_text}")
+    print(f"[HYBRID NAV DEBUG]   vision_state: {vision_state is not None}")
+    print(f"[HYBRID NAV DEBUG]   tick_id: {tick_id}")
+    print(f"[HYBRID NAV DEBUG]   frame_id: {frame_id}")
+    print(f"[HYBRID NAV DEBUG]   HYBRID_NAV_AVAILABLE: {HYBRID_NAV_AVAILABLE}")
+    
     if not HYBRID_NAV_AVAILABLE:
+        print(f"[HYBRID NAV DEBUG] Falling back to legacy - hybrid nav not available")
         # Fallback to existing depth analysis
         return _legacy_safety_check(brain_instance, action_text, vision_state)
     
     # Get current screenshot for Florence verification if needed
     current_image = None
     try:
-        current_image = brain_instance.capture_system.get_screenshot()
-    except:
+        # Use the brain's existing capture method
+        current_image = brain_instance.capture_system.capture_vrchat_for_qwen(filename=None, context="hybrid_nav_check")
+        print(f"[HYBRID NAV] Image captured for Florence verification: {current_image is not None}")
+        if current_image is not None:
+            print(f"[HYBRID NAV] Image type: {type(current_image)}, shape: {getattr(current_image, 'shape', 'no shape attr')}")
+    except Exception as e:
+        print(f"[HYBRID NAV] Failed to capture image for Florence: {e}")
+        import traceback
+        print(f"[HYBRID NAV] Exception details: {traceback.format_exc()}")
         pass  # Florence verification will be skipped if no image
     
     # Get hybrid navigation decision
-    safety_decision = get_navigation_safety(vision_state, current_image, tick_id, frame_id)
+    print(f"[HYBRID NAV] Calling get_navigation_safety - vision_state: {vision_state is not None}, image: {current_image is not None}, tick: {tick_id}, frame: {frame_id}")
     
-    # Log hybrid decision for monitoring
-    print(f"[HYBRID NAV] {safety_decision['decision']} - {safety_decision['reasoning']}")
+    try:
+        safety_decision = get_navigation_safety(vision_state, current_image, tick_id, frame_id)
+        
+        # Log hybrid decision for monitoring
+        print(f"[HYBRID NAV] Decision received: {safety_decision['decision']} - {safety_decision['reasoning']}")
+        print(f"[HYBRID NAV] Decision details: movement_allowed={safety_decision.get('movement_allowed')}, priority={safety_decision.get('priority')}")
+        
+    except Exception as e:
+        print(f"[HYBRID NAV] CRITICAL: get_navigation_safety failed: {e}")
+        import traceback
+        print(f"[HYBRID NAV] Exception details: {traceback.format_exc()}")
+        
+        # Fall back to legacy safety check
+        print(f"[HYBRID NAV] Falling back to legacy safety check")
+        return _legacy_safety_check(brain_instance, action_text, vision_state)
     
     # Movement type classification
     movement_actions = ["move forward", "strafe left", "strafe right", "back up", "approach target"]
