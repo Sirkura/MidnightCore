@@ -1,0 +1,4 @@
+{"timestamp": "20250918_200140", "action": "chat", "parameters": {"message": "Beta OSC Client online - autonomous command execution active", "immediate": true, "sound": true}, "reasoning": "System startup notification", "head_position": {"horizontal": 0, "vertical": 0}}
+{"timestamp": "20250918_200220", "action": "move_forward", "parameters": {"intensity": 1.0, "duration": 0.75}, "reasoning": "Beta command: move forward 1.5m", "head_position": {"horizontal": 0, "vertical": 0}}
+{"timestamp": "20250918_200221", "action": "stop_movement", "parameters": {}, "reasoning": "Stopping movement", "head_position": {"horizontal": 0, "vertical": 0}}
+{"timestamp": "20250918_200221", "action": "chat", "parameters": {"message": "I'm moving forward to get a better look at the computer monitor. Let me check what's on screen and see if I can interact with it.", "immediate": true, "sound": true}, "reasoning": "Beta generated message", "head_position": {"horizontal": 0, "vertical": 0}}

@@ -14,10 +14,11 @@ echo.
 echo Press Ctrl+C to stop the client
 echo.
 
-cd /d "G:\Experimental\Production\MidnightCore"
+REM Navigate to MidnightCore root using relative path from Startup directory
+cd /d "%~dp0..\.."
 
 REM Launch the OSC client with the Python interpreter
-"G:\Experimental\Production\MidnightCore\Core\Common\.venv\Scripts\python.exe" Core\Engine\osc_client.py
+"Core\Common\.venv\Scripts\python.exe" Core\Engine\osc_client.py
 
 echo.
 echo Beta OSC Client stopped.
