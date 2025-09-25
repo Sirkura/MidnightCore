@@ -112,12 +112,12 @@ def add_decision_info(image: np.ndarray, decision_type: str, tick_id: int,
     
     return image
 
-def save_navigation_decision_image(depth_map: np.ndarray, 
+def save_navigation_decision_image(depth_map: np.ndarray,
                                  decision_type: str,
                                  tick_id: int,
                                  frame_id: int,
                                  threat_summary: str = "",
-                                 save_dir: str = r"G:\Experimental\Production\MidnightCore\Core\Engine\Captures\Navigation") -> str:
+                                 save_dir: str = None) -> str:
     """
     Save a depth visualization image for a navigation decision
     
@@ -133,6 +133,13 @@ def save_navigation_decision_image(depth_map: np.ndarray,
         Path to saved image or empty string if failed
     """
     try:
+        # Set default save directory if not provided (relative to project root)
+        if save_dir is None:
+            # Get the project root directory (3 levels up from this file)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+            save_dir = os.path.join(project_root, "Core", "Engine", "Captures", "Navigation")
+
         # Create save directory if it doesn't exist
         os.makedirs(save_dir, exist_ok=True)
         

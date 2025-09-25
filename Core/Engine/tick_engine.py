@@ -28,9 +28,8 @@ except ImportError:
     from schemas import TickTelemetry
 
 # Import unified logging system
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Common', 'Tools'))
-from logging_bus import (
-    log_tick_start, log_capture_done, log_decide_done, 
+from ..Common.Tools.logging_bus import (
+    log_tick_start, log_capture_done, log_decide_done,
     log_speak_done, log_act_done, log_integrate_done
 )
 

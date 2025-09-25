@@ -19,60 +19,38 @@ from datetime import datetime
 from pathlib import Path
 from pythonosc import udp_client, dispatcher, osc_server
 
-# Import our enhanced modules
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from Modules.vision.florence_analyzer import get_florence_analyzer, analyze_screenshot
-from cropped_capture import QwenVRChatCapture
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Common', 'tools'))
-from performance_monitor import get_gpu_monitor, log_timing
+# Use relative imports for portability
+from ..Modules.vision.florence_analyzer import get_florence_analyzer, analyze_screenshot
+from .cropped_capture import QwenVRChatCapture
+from ..Common.Tools.performance_monitor import get_gpu_monitor, log_timing
 
 # Import enhanced logging system
-from logging_bus import (
+from ..Common.Tools.logging_bus import (
     log_engine, log_deep, log_filemap, initialize_logging, TracingConfig, trace_function,
-    log_llm_request, log_llm_response, log_intent_sidecar_input, log_intent_sidecar_output,
+    log_llm_request, log_llm_response,
     log_vision_describe, log_vision_detections, log_rank_targets, log_osc_send,
     log_chat_say, log_tick_telemetry
 )
 
 # Import modular components
-from tick_engine import TickEngine
-from intent_sidecar import extract_intent_sidecar, clean_natural_response, get_last_rule_tag
-from schemas import validate_decision_schema, safe_fallback_decision, CalibrationData
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Common', 'Tools'))
-from vrchat_log_parser import VRChatLogParser
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Modules', 'map'))
-from spatial_state import BetaSpatialState, create_spatial_state_for_world
+from .tick_engine import TickEngine
+from .intent_sidecar import clean_natural_response
+from .schemas import validate_decision_schema, safe_fallback_decision, CalibrationData
+from ..Common.Tools.vrchat_log_parser import VRChatLogParser
+from ..Modules.map.spatial_state import BetaSpatialState, create_spatial_state_for_world
 
 # Import hybrid navigation system
-from hybrid_navigation_integration import check_movement_safety, integrate_spatial_context
+from .hybrid_navigation_integration import check_movement_safety, integrate_spatial_context
 
 # Import new vision system components
-import sys
-import os
-
-# Add correct paths for vision system imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(current_dir, '..', '..', '..')  # Go up to Midnight Core root
-fusioncore_path = os.path.join(current_dir, '..', '..')     # Go up to FusionCore
-
-sys.path.insert(0, project_root)
-sys.path.insert(0, fusioncore_path)
-
 try:
     # Import state bus functions from Engine
-    from state_bus import get_vision_state, get_vision_facts
-    
+    from .state_bus import get_vision_state, get_vision_facts
+
     # Import vision workers from our migrated locations
-    vision_workers_path = os.path.join(os.path.dirname(__file__), '..', 'Modules', 'vision', 'workers')
-    sys.path.insert(0, vision_workers_path)
-    
-    from depth_worker import start_depth_worker, stop_depth_worker
-    from event_router import start_event_router, stop_event_router  
-    from florence_worker import start_florence_worker, stop_florence_worker
+    from ..Modules.vision.workers.depth_worker import start_depth_worker, stop_depth_worker
+    from ..Modules.vision.workers.event_router import start_event_router, stop_event_router
+    from ..Modules.vision.workers.florence_worker import start_florence_worker, stop_florence_worker
     
     VISION_SYSTEM_AVAILABLE = True
     print("SUCCESS: New vision system components loaded")
@@ -106,7 +84,7 @@ class NaturalQwenVRChatBrain:
         print("GPU monitoring started - tracking VRAM and performance telemetry")
         
         # Initialize OSC controller and world detection (skip broken auto-calibration)
-        from osc_controller import QwenVRChatOSC
+        from .osc_controller import QwenVRChatOSC
         self.osc_controller = QwenVRChatOSC()
         self.world_detector = VRChatLogParser()
         print("World detection system initialized - using VRChat log parser")
@@ -189,6 +167,10 @@ class NaturalQwenVRChatBrain:
         self.consecutive_llm_failures = 0
         self.max_llm_failures = 3
         self.llm_failure_pause = False
+
+        # OSC client subprocess management
+        self.osc_client_process = None
+        self.osc_client_running = False
         
         # Proportional target facing system (from suggestion)
         self.hfov_deg = 90.0          # Horizontal field of view
@@ -663,7 +645,159 @@ class NaturalQwenVRChatBrain:
                 curiosity = "HIGHLY INTRIGUING" if not recent and not type_blocked else "recently seen"
                 spatial_context_str += f"{det['label']} {direction} {curiosity} "
         
-        return self._extract_intent_sidecar(reasoning, spatial_context_str)
+        # STEP 3: File-based OSC command system - Beta writes structured commands to file
+        print(f"[STEP 3] Beta's reasoning: {reasoning[:100]}...")
+        print(f"[STEP 3] Spatial context: {spatial_context_str}")
+        
+        # Have Beta generate structured commands in the expected format
+        structured_output = self._generate_structured_commands(reasoning, spatial_context_str)
+        
+        # Write commands to file for external execution
+        self._write_command_file(structured_output)
+        
+        # No return needed - command execution handled by external OSC client
+        # Beta's commands are written to beta_commands.json for execution
+        return None
+
+    def _generate_structured_commands(self, reasoning, spatial_context_str):
+        """Generate structured <CONTROL_JSON> and <SAY> format output using LLM"""
+        try:
+            system_prompt = """You are Beta, an autonomous VRChat AI. Based on your reasoning and spatial context, choose ONE command and output EXACTLY this format:
+
+<CONTROL_JSON>
+```json
+{"commands": [{"name": "CHOOSE_COMMAND", "params": {"PARAM_NAME": VALUE}}]}
+```
+</CONTROL_JSON>
+
+<SAY>
+Write your own unique message about what you actually see and want to do.
+</SAY>
+
+Available commands (choose ONE):
+- move_forward: {"distance_m": 0.5-3.0}
+- turn: {"angle_deg": -180 to 180}
+- look: {"pitch_deg": -80 to 80}
+- stop: {} (no params)
+- interact: {} (no params)
+- describe: {"note": "text"} (optional)
+
+Command examples (use actual values):
+- {"name": "move_forward", "params": {"distance_m": 1.5}}
+- {"name": "turn", "params": {"angle_deg": 45}}
+- {"name": "look", "params": {"pitch_deg": -20}}
+- {"name": "stop", "params": {}}
+
+Output ONLY the CONTROL_JSON and SAY blocks. Write your SAY message about what you actually see in the scene, not any example text."""
+
+            user_prompt = f"""REASONING: {reasoning}
+
+SPATIAL CONTEXT: {spatial_context_str}
+
+Current situation: Standing in a VRChat world, depth sensors show front clearance ~1.8m, detecting various objects around me. 
+
+Generate structured command output now:"""
+
+            # Use existing LLM call infrastructure
+            response = self._call_llm_simple(user_prompt, system_prompt, max_tokens=200, temperature=0.3)
+            
+            if response and response.strip():
+                print(f"[STRUCTURED OUTPUT] Beta generated: {response[:200]}...")
+                return response.strip()
+            else:
+                print("[STRUCTURED OUTPUT] LLM returned empty response, using fallback")
+                return self._get_fallback_structured_output()
+                
+        except Exception as e:
+            print(f"[STRUCTURED OUTPUT] Error generating structured commands: {e}")
+            return self._get_fallback_structured_output()
+
+    def _get_fallback_structured_output(self):
+        """Fallback structured output if LLM fails - use safe look command instead of movement"""
+        return """<CONTROL_JSON>
+```json
+{"commands": [{"name": "look", "params": {"direction": "left", "duration": 0.5}}]}
+```
+</CONTROL_JSON>
+
+<SAY>
+Looking around to understand my surroundings better.
+</SAY>"""
+
+    def _write_command_file(self, structured_output):
+        """Write structured commands to file for external execution"""
+        import json
+        import re
+        import os
+        from datetime import datetime
+
+        try:
+            # Parse the structured output - find LAST occurrence (Beta's actual response, not system prompt)
+            control_matches = list(re.finditer(r'<CONTROL_JSON>\s*```json\s*(\{.*?\})\s*```\s*</CONTROL_JSON>', structured_output, re.DOTALL | re.IGNORECASE))
+            say_matches = list(re.finditer(r'<SAY>\s*(.*?)\s*</SAY>', structured_output, re.DOTALL | re.IGNORECASE))
+
+            control_match = control_matches[-1] if control_matches else None
+            say_match = say_matches[-1] if say_matches else None
+
+            commands_json = None
+            say_text = None
+
+            # Debug parsing results
+            print(f"[COMMAND FILE DEBUG] Control matches found: {len(control_matches)}")
+            print(f"[COMMAND FILE DEBUG] SAY matches found: {len(say_matches)}")
+            print(f"[COMMAND FILE DEBUG] Using last control match: {control_match is not None}")
+            print(f"[COMMAND FILE DEBUG] Using last SAY match: {say_match is not None}")
+
+            if control_match:
+                try:
+                    raw_json = control_match.group(1)
+                    print(f"[COMMAND FILE DEBUG] Extracted JSON: {raw_json}")
+                    commands_json = json.loads(raw_json)
+                    print(f"[COMMAND FILE DEBUG] Parsed commands: {commands_json}")
+                except json.JSONDecodeError as e:
+                    print(f"[COMMAND FILE] JSON parse error: {e}")
+                    print(f"[COMMAND FILE] Raw JSON that failed: {control_match.group(1)}")
+                    # NO FALLBACKS - let it fail
+                    raise ValueError(f"JSON parsing failed: {e}")
+            else:
+                print(f"[COMMAND FILE] No CONTROL_JSON match found in output")
+                print(f"[COMMAND FILE] Raw output: {structured_output[:500]}...")
+                # NO FALLBACKS - let it fail
+                raise ValueError("No CONTROL_JSON found in LLM output")
+
+            if say_match:
+                say_text = say_match.group(1).strip().replace('\n', ' ')
+                print(f"[COMMAND FILE DEBUG] Extracted say text: {say_text}")
+            else:
+                print(f"[COMMAND FILE] No SAY match found in output")
+                # NO FALLBACKS - let it fail
+                raise ValueError("No SAY block found in LLM output")
+
+            # Create command file structure
+            command_data = {
+                "timestamp": datetime.now().isoformat(),
+                "frame_id": getattr(self.tick_engine, 'frame_id', 0),
+                "tick_id": getattr(self.tick_engine, 'tick_id', 0),
+                "commands": commands_json.get("commands", []),
+                "say": say_text,
+                "raw_output": structured_output
+            }
+            
+            # Write to commands directory
+            commands_dir = os.path.join(os.path.dirname(__file__), "..", "Common", "Cache", "Commands")
+            os.makedirs(commands_dir, exist_ok=True)
+            
+            command_file = os.path.join(commands_dir, "beta_commands.json")
+            
+            with open(command_file, 'w', encoding='utf-8') as f:
+                json.dump(command_data, f, indent=2)
+            
+            print(f"[COMMAND FILE] Commands written to: {command_file}")
+            print(f"[COMMAND FILE] Commands: {commands_json}")
+            print(f"[COMMAND FILE] Say: {say_text}")
+            
+        except Exception as e:
+            print(f"[COMMAND FILE] Error writing command file: {e}")
     
     def _extract_action_llm(self, reasoning, ranked=None):
         """Use LLM to naturally translate reasoning to OSC commands"""
@@ -833,33 +967,8 @@ NO other text allowed. Examples:
         print("REGEX DEBUG: No 'I want to' patterns found in response")
         return None
     
-    def _extract_intent_sidecar(self, natural_reasoning, spatial_context=""):
-        """Deterministic intent extraction from natural language (sidecar approach)"""
-        # Get current tick/frame IDs for logging
-        current_tick = getattr(self.tick_engine, 'tick_id', 0)
-        current_frame = getattr(self.tick_engine, 'frame_id', 0)
-        
-        # Log sidecar input
-        log_intent_sidecar_input(
-            tick_id=current_tick,
-            frame_id=current_frame,
-            spatial_context=spatial_context,
-            natural_preview=natural_reasoning
-        )
-        
-        # Call the sidecar
-        action = extract_intent_sidecar(natural_reasoning, spatial_context)
-        rule_tag = get_last_rule_tag()
-        
-        # Log sidecar output with rule tag
-        log_intent_sidecar_output(
-            tick_id=current_tick,
-            frame_id=current_frame,
-            action=action,
-            rule=rule_tag
-        )
-        
-        return action
+    # REMOVED: _extract_intent_sidecar method - no longer needed with file-based command system
+    # Beta's natural reasoning flows directly to structured command generation
     
     def _clean_natural_response(self, raw_response):
         """Extract pure natural reasoning, removing all system prompt echoes"""
@@ -1078,30 +1187,28 @@ NO other text allowed. Examples:
     def wait_for_depth_system_ready(self, timeout_seconds=10):
         """Wait for depth system to start publishing real data"""
         import time
+        import os
         print("Phase 2: Waiting for depth system to be ready...")
         
         start_time = time.time()
         while time.time() - start_time < timeout_seconds:
             try:
                 # Import the state bus to check if depth data is available
-                engine_path = os.path.join(os.path.dirname(__file__))
-                import sys
-                if engine_path not in sys.path:
-                    sys.path.insert(0, engine_path)
-                
-                from state_bus import get_vision_state
+                from .state_bus import get_vision_state
                 
                 # Check if depth system is publishing real data
                 vision_state = get_vision_state()
+                print(f"DEBUG: vision_state = {vision_state}")
                 if vision_state is not None:
                     # Check if we have valid depth data (not simulated)
                     front_m = vision_state.get('front_m', 0.0)
+                    print(f"DEBUG: front_m = {front_m}")
                     if front_m > 0.1:  # Valid depth measurement
                         print(f"SUCCESS: Depth system ready after {time.time() - start_time:.1f}s (front_m={front_m:.2f})")
                         return True
-                
+
                 elapsed = time.time() - start_time
-                print(f"Waiting for depth system... ({elapsed:.1f}s) - no valid depth data yet")
+                print(f"Waiting for depth system... ({elapsed:.1f}s) - vision_state: {vision_state is not None}, front_m: {vision_state.get('front_m', 'N/A') if vision_state else 'N/A'}")
                 time.sleep(0.5)
                 
             except Exception as e:
@@ -1129,16 +1236,83 @@ NO other text allowed. Examples:
         # Phase 4: All systems ready
         print("Phase 4: All systems ready for consciousness")
         print("=== SEQUENTIAL STARTUP COMPLETE ===\n")
-        
+
         return world_id
-    
+
+    def start_osc_client(self):
+        """Start the OSC client as a managed subprocess"""
+        if self.osc_client_running:
+            print("OSC client already running")
+            return True
+
+        try:
+            # Get the path to the Python executable and OSC client module
+            import sys
+            python_exe = sys.executable
+
+            # Get the project root directory
+            import os
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(current_dir))
+
+            # Start OSC client subprocess
+            self.osc_client_process = subprocess.Popen(
+                [python_exe, "-m", "Core.Engine.osc_client"],
+                cwd=project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+            )
+
+            self.osc_client_running = True
+            print(f"SUCCESS: OSC client started as subprocess (PID: {self.osc_client_process.pid})")
+
+            # Give it a moment to initialize
+            import time
+            time.sleep(2)
+
+            return True
+
+        except Exception as e:
+            print(f"ERROR: Failed to start OSC client subprocess: {e}")
+            self.osc_client_running = False
+            return False
+
+    def stop_osc_client(self):
+        """Stop the OSC client subprocess"""
+        if not self.osc_client_running or not self.osc_client_process:
+            return
+
+        try:
+            print("Stopping OSC client subprocess...")
+            self.osc_client_process.terminate()
+
+            # Wait up to 5 seconds for graceful shutdown
+            try:
+                self.osc_client_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("OSC client didn't stop gracefully, forcing termination...")
+                self.osc_client_process.kill()
+                self.osc_client_process.wait()
+
+            print("OSC client subprocess stopped")
+            self.osc_client_running = False
+            self.osc_client_process = None
+
+        except Exception as e:
+            print(f"Warning: Error stopping OSC client: {e}")
+
     def start_lockstep_consciousness(self):
         """NEW: Lockstep main loop with speak-before-act sequencing"""
         print("Starting lockstep consciousness loop...")
         
         # Sequential startup - wait for each system to be ready
         world_id = self.sequential_startup()
-        
+
+        # Start OSC client subprocess
+        if not self.start_osc_client():
+            print("WARNING: OSC client failed to start - continuing without external OSC client")
+
         # Send welcome message with world status
         world_info_str = f" World: {world_id}" if world_id else ""
         self.chat(f"Natural Qwen Brain activated with lockstep synchronization! Using Unity defaults for movement.{world_info_str} Frame-perfect exploration ready.", "System activation")
@@ -1392,8 +1566,9 @@ Express your thoughts naturally about what you see and what interests you. Then 
         """LOCKSTEP: Execute action with frame ID stamping"""
         print(f"[ACTION] tick={tick_id} frame={frame_id} executing: {action_command}")
         
-        # Use existing action execution method
-        self._perform_action(action_command)
+        # DISABLED: Legacy OSC execution replaced by file-based command system
+        # Commands are now written to beta_commands.json for external execution
+        # self._perform_action(action_command)  # Removed for Session 24
         
         # Log action with frame ID (using existing OSC logging method)
         self.log_osc_command("lockstep_action", {"command": action_command, "tick_id": tick_id, "frame_id": frame_id})
@@ -1816,7 +1991,10 @@ Express your thoughts naturally about what you see and what interests you. Then 
                 try:
                     t0 = time.time()
                     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    out, err = proc.communicate(timeout=30)  # Reduced timeout
+                    llm_start_time = time.time()
+                    out, err = proc.communicate(timeout=120)  # Increased to 2 minutes for Qwen-3 reasoning
+                    llm_duration = time.time() - llm_start_time
+                    print(f"[LLM TIMING] Qwen-3 reasoning completed in {llm_duration:.1f}s")
                     if proc.returncode != 0:
                         print(f"Tier {tier_name}: returncode {proc.returncode}")
                         continue
@@ -1847,7 +2025,10 @@ Express your thoughts naturally about what you see and what interests you. Then 
                         
                         try:
                             retry_proc = subprocess.Popen(retry_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                            retry_out, retry_err = retry_proc.communicate(timeout=30)
+                            retry_start_time = time.time()
+                            retry_out, retry_err = retry_proc.communicate(timeout=120)
+                            retry_duration = time.time() - retry_start_time
+                            print(f"[LLM TIMING] Qwen-3 retry completed in {retry_duration:.1f}s")
                             if retry_proc.returncode == 0:
                                 text = (retry_out or "").replace("<s>", "").replace("</s>", "").strip()
                                 print(f"Retry successful: {len(text.split())} words")
@@ -1893,13 +2074,26 @@ Express your thoughts naturally about what you see and what interests you. Then 
                     else:
                         print(f"Tier {tier_name}: empty output (len={len(text)})")
                 except subprocess.TimeoutExpired:
-                    print(f"Tier {tier_name}: timeout after 30s")
+                    print(f"Tier {tier_name}: timeout after 120s")
                     proc.kill(); proc.communicate()
                 except Exception as e:
                     print(f"Tier {tier_name}: exception {e}")
                     pass
             return dict(success=False, text="")
-    
+
+    def _call_llm_simple(self, user_prompt: str, system_prompt: str, max_tokens=200, temperature=0.3):
+        """Simple LLM call for structured output generation"""
+        try:
+            result = self._qwen_chat(system_prompt, user_prompt, max_tokens=max_tokens, mode="decision")
+            if result.get("success", False):
+                return result.get("text", "").strip()
+            else:
+                print(f"[STRUCTURED OUTPUT] LLM call failed: {result}")
+                return None
+        except Exception as e:
+            print(f"[STRUCTURED OUTPUT] LLM call exception: {e}")
+            return None
+
     def _detect_targets_of_interest(self, analysis):
         """Detect and prioritize targets of interest from Florence analysis"""
         if not analysis:
@@ -2946,7 +3140,15 @@ Express your thoughts naturally about what you see and what interests you. Then 
                 self.osc_client.send_message(button, 0)
             
             print("Emergency reset complete")
-            
+
+            # Give OSC client time to process any pending commands
+            print("Waiting 3 seconds for OSC client to process pending commands...")
+            import time
+            time.sleep(3.0)
+
+            # Stop OSC client subprocess
+            self.stop_osc_client()
+
         except Exception as e:
             print(f"Error during emergency reset: {e}")
     

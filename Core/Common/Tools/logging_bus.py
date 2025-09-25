@@ -18,9 +18,10 @@ from pathlib import Path
 # Thread safety
 _lock = threading.RLock()
 
-# Unified log file path
+# Unified log file paths
 _log_dir = Path("G:/Experimental/Production/MidnightCore/Core/Engine/Logging")
-_events_log = _log_dir / "events.ndjson"
+_events_log = _log_dir / "events.ndjson"  # Master index file (lightweight)
+_modules_dir = _log_dir / "modules"
 
 # Session tracking
 _session_id = str(uuid.uuid4())[:8]
@@ -37,18 +38,95 @@ class TracingConfig:
 def _ensure_log_dir():
     """Ensure logging directory exists"""
     _log_dir.mkdir(parents=True, exist_ok=True)
+    _modules_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create module subdirectories
+    for module in ["engine", "vision", "spatial", "intent", "osc", "performance"]:
+        (_modules_dir / module).mkdir(parents=True, exist_ok=True)
+
+def _get_module_info(event):
+    """
+    Determine module and specific log file for an event
+    Returns: (module_name, log_file_name)
+    """
+    # Engine module events
+    if event.startswith(("tick.", "capture.", "decide.", "speak.", "act.", "integrate.")):
+        return "engine", "tick_events.ndjson"
+    elif event.startswith(("brain.", "legacy.brain.", "control.")):
+        return "engine", "brain_events.ndjson"
+    elif event.startswith(("llm.")):
+        return "engine", "llm_events.ndjson"
+
+    # Vision module events
+    elif event.startswith(("hybrid_nav.")):
+        return "vision", "hybrid_nav_events.ndjson"
+    elif event.startswith(("vision.describe", "vision.detections")):
+        return "vision", "florence_events.ndjson"
+    elif event.startswith(("depth.", "temporal_buffer", "regional_stats")):
+        return "vision", "depth_events.ndjson"
+
+    # Spatial module events
+    elif event.startswith(("legacy.spatial.init", "legacy.spatial.cache", "legacy.spatial.position", "legacy.spatial.facing")):
+        return "spatial", "position_events.ndjson"
+    elif event.startswith(("legacy.spatial.movement", "legacy.spatial.calibration")):
+        return "spatial", "movement_events.ndjson"
+
+    # Intent module events
+    elif event.startswith(("intent.sidecar")):
+        return "intent", "sidecar_events.ndjson"
+
+    # OSC module events
+    elif event.startswith(("osc.")):
+        return "osc", "command_events.ndjson"
+
+    # Performance module events
+    elif event.startswith(("gpu.", "perf.")):
+        return "performance", "gpu_events.ndjson"
+    elif event.startswith(("tick.telemetry")):
+        return "performance", "telemetry_events.ndjson"
+
+    # Legacy and unknown events go to engine by default
+    elif event.startswith(("legacy.", "debug.", "function.", "file.", "log.")):
+        return "engine", "brain_events.ndjson"
+
+    # Fallback to engine
+    else:
+        return "engine", "brain_events.ndjson"
+
+def _write_to_module_log(module_name, log_file_name, record):
+    """Write event to specific module log file"""
+    module_log_path = _modules_dir / module_name / log_file_name
+    line = json.dumps(record, ensure_ascii=False)
+
+    with open(module_log_path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+def _write_to_master_index(event, record):
+    """Write lightweight entry to master events.ndjson"""
+    # Create lightweight index entry (no heavy payload data)
+    index_record = {
+        "ts": record["ts"],
+        "session_id": record["session_id"],
+        "event": event,
+        "tick_id": record.get("tick_id"),
+        "frame_id": record.get("frame_id")
+    }
+
+    line = json.dumps(index_record, ensure_ascii=False)
+    with open(_events_log, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 # Core unified logging function
 def log_event(event, **payload):
     """
-    Central event emitter for unified NDJSON logging
+    Central event emitter for unified NDJSON logging with module-aware routing
     All events flow through this single function
     """
     if not TracingConfig.UNIFIED_LOG:
         return
-    
+
     _ensure_log_dir()
-    
+
     # Build the canonical record structure
     record = {
         "ts": time.time(),
@@ -56,12 +134,14 @@ def log_event(event, **payload):
         "event": event,
         **{k: v for k, v in payload.items() if v is not None}
     }
-    
-    line = json.dumps(record, ensure_ascii=False)
-    
+
     with _lock:
-        with open(_events_log, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        # Write to appropriate module log file
+        module_name, log_file_name = _get_module_info(event)
+        _write_to_module_log(module_name, log_file_name, record)
+
+        # Write lightweight entry to master index
+        _write_to_master_index(event, record)
 
 # ============================================================================
 # TICK ENGINE EVENTS
@@ -511,6 +591,135 @@ def rotate_log_if_needed():
         print(f"[LOGGING] Warning: Log rotation failed: {e}")
 
 # ============================================================================
+# MODULE-BASED LOG READING UTILITIES
+# ============================================================================
+
+def read_module_logs(module_name, log_file_name=None, session_id=None, tick_id_range=None):
+    """
+    Read logs from specific module
+
+    Args:
+        module_name: "engine", "vision", "spatial", "intent", "osc", "performance"
+        log_file_name: specific log file (optional, reads all if None)
+        session_id: filter by session (optional)
+        tick_id_range: (min_tick, max_tick) tuple (optional)
+
+    Returns:
+        List of log records
+    """
+    module_dir = _modules_dir / module_name
+    if not module_dir.exists():
+        return []
+
+    records = []
+
+    if log_file_name:
+        # Read specific file
+        log_files = [log_file_name]
+    else:
+        # Read all files in module
+        log_files = [f.name for f in module_dir.glob("*.ndjson")]
+
+    for log_file in log_files:
+        log_path = module_dir / log_file
+        if not log_path.exists():
+            continue
+
+        try:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    record = json.loads(line)
+
+                    # Apply filters
+                    if session_id and record.get("session_id") != session_id:
+                        continue
+
+                    if tick_id_range:
+                        tick_id = record.get("tick_id")
+                        if tick_id is None:
+                            continue
+                        min_tick, max_tick = tick_id_range
+                        if not (min_tick <= tick_id <= max_tick):
+                            continue
+
+                    records.append(record)
+
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Error reading {log_path}: {e}")
+            continue
+
+    # Sort by timestamp
+    records.sort(key=lambda r: r.get("ts", 0))
+    return records
+
+def get_module_summary():
+    """Get summary of events per module"""
+    summary = {}
+
+    for module_name in ["engine", "vision", "spatial", "intent", "osc", "performance"]:
+        module_dir = _modules_dir / module_name
+        if not module_dir.exists():
+            continue
+
+        module_summary = {}
+        for log_file in module_dir.glob("*.ndjson"):
+            try:
+                line_count = sum(1 for line in open(log_file, 'r', encoding='utf-8') if line.strip())
+                module_summary[log_file.stem] = line_count
+            except IOError:
+                module_summary[log_file.stem] = 0
+
+        if module_summary:
+            summary[module_name] = module_summary
+
+    return summary
+
+def read_session_logs(session_id, module_filter=None):
+    """
+    Read all logs for a specific session across modules
+
+    Args:
+        session_id: Session ID to filter by
+        module_filter: List of modules to include (optional, all if None)
+
+    Returns:
+        List of log records sorted by timestamp
+    """
+    all_records = []
+
+    modules = module_filter or ["engine", "vision", "spatial", "intent", "osc", "performance"]
+
+    for module_name in modules:
+        module_records = read_module_logs(module_name, session_id=session_id)
+        all_records.extend(module_records)
+
+    # Sort by timestamp
+    all_records.sort(key=lambda r: r.get("ts", 0))
+    return all_records
+
+def get_log_file_paths():
+    """Get all current log file paths for external tools"""
+    paths = {
+        "master_index": str(_events_log),
+        "modules": {}
+    }
+
+    for module_name in ["engine", "vision", "spatial", "intent", "osc", "performance"]:
+        module_dir = _modules_dir / module_name
+        if module_dir.exists():
+            module_files = {}
+            for log_file in module_dir.glob("*.ndjson"):
+                module_files[log_file.stem] = str(log_file)
+            if module_files:
+                paths["modules"][module_name] = module_files
+
+    return paths
+
+# ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
 
@@ -523,44 +732,93 @@ def get_events_log_path():
     return str(_events_log)
 
 if __name__ == "__main__":
-    # Test the unified logging system
+    # Test the module-based logging system
+    print("Testing module-based logging system...")
     initialize_logging()
-    
+
     # Test basic events
     log_event("test.basic", message="Basic unified logging test")
-    
-    # Test tick engine events
+
+    # Test tick engine events (should go to engine/tick_events.ndjson)
+    print("Testing tick engine events...")
     log_tick_start(1)
     log_capture_done(1, 101, 250.5, action_window=True)
     log_decide_done(1, 101, 1500.2, 1800.7)
     log_speak_done(1, 101, 85.3)
     log_act_done(1, 101, "move forward")
     log_integrate_done(1, 101)
-    
-    # Test vision events
-    log_vision_describe(1, 101, "office room", 
+
+    # Test LLM events (should go to engine/llm_events.ndjson)
+    print("Testing LLM events...")
+    log_llm_request(1, 101, "decision", 200, 0.7, 0.9, "You see a door ahead. What do you do?")
+    log_llm_response(1, 101, 95, 450.2, ended_early=False, tier="local",
+                    text_preview="I want to explore the door")
+
+    # Test vision events (should go to vision/florence_events.ndjson)
+    print("Testing vision events...")
+    log_vision_describe(1, 101, "office room",
                        objects=[{"label": "door", "cx": 0.5, "cy": 0.6, "area": 0.2}],
                        paths=["forward"], people=[])
     log_vision_detections(1, 101, [
         {"label": "door", "bbox": [0.4, 0.3, 0.6, 0.8], "ocr": False},
         {"label": "poster", "bbox": [0.7, 0.1, 0.9, 0.4], "ocr": True}
     ])
-    
-    # Test LLM events
-    log_llm_request(1, 101, "decision", 200, 0.7, 0.9, "You see a door ahead. What do you do?")
-    log_llm_response(1, 101, 95, 450.2, ended_early=False, tier="local", 
-                    text_preview="I want to explore the door")
-    
-    # Test sidecar events
+
+    # Test hybrid navigation events (should go to vision/hybrid_nav_events.ndjson)
+    print("Testing hybrid navigation events...")
+    log_hybrid_nav_start(1, 101, vision_state_available=True, image_available=True)
+    log_depth_analysis_tier1(1, 101, "depth_map", True, {"front_m": 2.5, "left_m": 3.0}, needs_florence=True)
+    log_navigation_decision(1, 101, "MOVE_FORWARD_CLEAR", True, ["forward"], "Path is clear", "high")
+
+    # Test intent sidecar events (should go to intent/sidecar_events.ndjson)
+    print("Testing intent events...")
     log_intent_sidecar_input(1, 101, "door CENTER HIGHLY INTRIGUING", "I want to explore")
     log_intent_sidecar_output(1, 101, "move forward", "forward")
-    
-    # Test OSC and performance
+
+    # Test OSC events (should go to osc/command_events.ndjson)
+    print("Testing OSC events...")
     log_osc_send(1, 101, "move forward", True, 15.2)
+
+    # Test performance events (should go to performance/gpu_events.ndjson)
+    print("Testing performance events...")
     log_gpu_sample(65, 4096, 72)
     log_perf_block("vision", 320.5)
-    
+
+    # Test spatial events (should go to spatial/position_events.ndjson)
+    print("Testing spatial events...")
+    log_event("legacy.spatial.init", world_id="test_world", spawn_position={"x": 0, "y": 0})
+    log_event("legacy.spatial.movement.success", distance=1.5, duration=0.75)
+
     # Test backward compatibility
     log_engine("test.legacy", message="Legacy compatibility test")
-    
-    print(f"Unified logging test complete - check {_events_log}")
+
+    print("\nModule-based logging test complete!")
+    print(f"Master index: {_events_log}")
+
+    # Show module summary
+    print("\nModule log summary:")
+    summary = get_module_summary()
+    for module, files in summary.items():
+        print(f"  {module}:")
+        for file, count in files.items():
+            print(f"    {file}: {count} events")
+
+    # Show log file paths
+    print("\nLog file paths:")
+    paths = get_log_file_paths()
+    print(f"  Master index: {paths['master_index']}")
+    for module, files in paths['modules'].items():
+        print(f"  {module}:")
+        for file_type, path in files.items():
+            print(f"    {file_type}: {path}")
+
+    # Test reading specific modules
+    print(f"\nTesting module reading...")
+    engine_logs = read_module_logs("engine", "tick_events.ndjson")
+    print(f"Read {len(engine_logs)} tick engine events")
+
+    vision_logs = read_module_logs("vision")
+    print(f"Read {len(vision_logs)} total vision events")
+
+    session_logs = read_session_logs(_session_id, module_filter=["engine", "vision"])
+    print(f"Read {len(session_logs)} events for current session (engine + vision only)")

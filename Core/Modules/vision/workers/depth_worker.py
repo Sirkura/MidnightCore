@@ -13,22 +13,13 @@ import argparse
 import sys
 import os
 
-# Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+# Import from relative locations
+from .depth_adapter.depth_anything_v2_onnx import DepthAnythingV2ONNX
+from .state_estimator import StateEstimator
 
-# Import from migrated locations
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'depth_adapter'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from depth_adapter.depth_anything_v2_onnx import DepthAnythingV2ONNX
-from state_estimator import StateEstimator
-
-# Integration state bus - migrated to Engine
-engine_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'Engine')
-sys.path.insert(0, engine_path)
-
+# Integration state bus
 try:
-    from state_bus import init_state_bus, publish_vision_state
+    from ....Engine.state_bus import init_state_bus, publish_vision_state
     STATE_BUS_AVAILABLE = True
 except ImportError:
     print("WARNING: Integration state_bus not available")

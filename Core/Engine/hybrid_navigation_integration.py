@@ -23,9 +23,8 @@ import os
 import numpy as np
 
 # Import hybrid navigation system
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Modules', 'vision'))
 try:
-    from hybrid_navigation import get_navigation_safety, is_movement_safe
+    from ..Modules.vision.hybrid_navigation import get_navigation_safety, is_movement_safe
     HYBRID_NAV_AVAILABLE = True
 except ImportError:
     print("WARNING: Hybrid navigation not available")
@@ -33,8 +32,7 @@ except ImportError:
 
 # Import logging system
 try:
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Common', 'Tools'))
-    from logging_bus import log_movement_safety_check
+    from ..Common.Tools.logging_bus import log_movement_safety_check
     LOGGING_AVAILABLE = True
 except ImportError:
     print("WARNING: Logging bus not available for hybrid navigation integration")

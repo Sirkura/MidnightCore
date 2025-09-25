@@ -34,8 +34,9 @@ set DEEP_TRACE=disabled
 set FILE_MAP=disabled
 set MAX_TICKS=999999
 
-REM Navigate to the correct directory
-cd /d "G:\Experimental\Production\MidnightCore"
+REM Navigate to the script directory (portable)
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
 
 REM Launch the brain with hybrid navigation
 echo [BETA] Initializing Hybrid Navigation Brain System...
@@ -44,7 +45,7 @@ echo [BETA] Legacy logs: Core\Engine\Logging\.engine_log\engine.log
 echo [BETA] Hybrid navigation: TWO-TIER ANALYSIS ACTIVE
 echo.
 
-"G:\Experimental\Production\MidnightCore\Core\Common\.venv\Scripts\python.exe" Core\Engine\Qwen_Brain_ActiveTesting.py
+"%SCRIPT_DIR%Core\Common\.venv\Scripts\python.exe" Core\Engine\Qwen_Brain_ActiveTesting.py
 
 echo.
 echo =====================================================

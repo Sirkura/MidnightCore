@@ -21,7 +21,7 @@ sys.path.insert(0, engine_path)
 from state_bus import get_vision_state, publish_vision_facts
 
 # Import event router from local workers
-from event_router import get_next_inspection_event
+from .event_router import get_next_inspection_event
 
 class FlorenceWorker:
     """

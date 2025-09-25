@@ -26,12 +26,9 @@ import cv2
 from collections import deque
 from typing import Optional, Dict, List, Tuple, Any
 
-# Import existing modules
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Import depth visualizer
+# Import existing modules with relative imports
 try:
-    from depth_visualizer import save_navigation_decision_image, should_save_decision_image
+    from .depth_visualizer import save_navigation_decision_image, should_save_decision_image
     DEPTH_VISUALIZATION_AVAILABLE = True
 except ImportError as e:
     print(f"WARNING: Depth visualization not available: {e}")
@@ -40,30 +37,24 @@ except ImportError as e:
         pass
     def should_save_decision_image(*args, **kwargs):
         return False
-sys.path.append(current_dir)
-sys.path.append(os.path.join(current_dir, '..', '..', 'Engine'))
 
 try:
-    from florence_analyzer import get_florence_analyzer
+    from .florence_analyzer import get_florence_analyzer
     FLORENCE_AVAILABLE = True
 except ImportError:
     print("WARNING: Florence analyzer not available for hybrid navigation")
     FLORENCE_AVAILABLE = False
-    
+
 try:
-    from state_bus import get_vision_state
+    from ...Engine.state_bus import get_vision_state
     STATE_BUS_AVAILABLE = True
 except ImportError:
-    print("WARNING: State bus not available for hybrid navigation") 
+    print("WARNING: State bus not available for hybrid navigation")
     STATE_BUS_AVAILABLE = False
 
 # Import logging system
 try:
-    import sys
-    import os
-    logging_tools_path = os.path.join(os.path.dirname(__file__), '..', '..', 'Common', 'Tools')
-    sys.path.append(logging_tools_path)
-    from logging_bus import (
+    from ...Common.Tools.logging_bus import (
         log_hybrid_nav_start, log_depth_analysis_tier1, log_florence_verification_tier2,
         log_navigation_decision, log_movement_safety_check, log_temporal_smoothing_buffer,
         log_regional_percentiles

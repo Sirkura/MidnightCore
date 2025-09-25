@@ -45,22 +45,28 @@ except ImportError:
     print("WARNING: PyTorch/Transformers not available - PyTorch models disabled")
     PYTORCH_AVAILABLE = False
 
-# Model configurations
+# Model configurations (paths will be resolved relative to project root)
 MODELS = {
     "swin2_tiny_onnx": {
-        "path": r"G:\Experimental\Production\MidnightCore\Core\models\onnx\dpt_swin2_tiny_256.onnx",
+        "path": "Core/models/onnx/dpt_swin2_tiny_256.onnx",
         "type": "onnx",
         "input_size": 256,
         "description": "DPT SwinV2-Tiny ONNX - Fast inference with transformer architecture"
     },
     "hybrid_pytorch": {
-        "path": r"G:\Experimental\Production\MidnightCore\Core\models\onnx\dpt_hybrid_midas",
+        "path": "Core/models/onnx/dpt_hybrid_midas",
         "type": "pytorch",
-        "model_name": "Intel/dpt-hybrid-midas", 
+        "model_name": "Intel/dpt-hybrid-midas",
         "input_size": 384,
         "description": "DPT Hybrid PyTorch - CNN-Transformer hybrid for balanced accuracy/speed"
     }
 }
+
+def _get_project_root():
+    """Get the project root directory (MidnightCore folder)"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Navigate up: depth_adapter -> workers -> vision -> Modules -> Core -> MidnightCore
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))))
 
 class MiDaSDepthEstimator:
     """
@@ -80,9 +86,13 @@ class MiDaSDepthEstimator:
         if model_key not in MODELS:
             raise ValueError(f"Unknown model '{model_key}'. Available: {list(MODELS.keys())}")
         
-        self.model_config = MODELS[model_key]
+        self.model_config = MODELS[model_key].copy()
         self.model_key = model_key
         self.model_type = self.model_config["type"]
+
+        # Resolve relative path to absolute path
+        project_root = _get_project_root()
+        self.model_config["path"] = os.path.join(project_root, self.model_config["path"])
         
         # Common attributes
         self.is_loaded = False

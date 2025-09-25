@@ -12,10 +12,8 @@ import sys
 import os
 from datetime import datetime
 
-# Add project root to path for vision system imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
 try:
+    # Try legacy import for backward compatibility
     from FusionCore.Integration.state_bus import get_vision_state
     DEPTH_SYSTEM_AVAILABLE = True
 except ImportError:

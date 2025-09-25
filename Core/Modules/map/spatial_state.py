@@ -357,28 +357,30 @@ class BetaSpatialState:
             # Create new instance
             spatial_state = cls(world_id, cache_data.get("unity_constants"))
             
-            # Restore position data
-            pos_data = cache_data["current_position"]
-            spatial_state.position = WorldPosition(
-                pos_data["x"], pos_data["y"], pos_data["z"], pos_data["timestamp"]
-            )
-            spatial_state.facing_angle = pos_data["facing_angle"]
-            
+            # Always reset position to spawn on startup (VRChat behavior)
+            # But preserve the spawn position from cache
             spawn_data = cache_data["spawn_position"]
             spatial_state.spawn_position = WorldPosition(
                 spawn_data["x"], spawn_data["y"], spawn_data["z"]
             )
+
+            # Reset current position to spawn (Beta always spawns at world spawn point)
+            spatial_state.position = WorldPosition(
+                spawn_data["x"], spawn_data["y"], spawn_data["z"], time.time()
+            )
+            spatial_state.facing_angle = 0.0  # Reset facing to default
             
-            # Restore session stats
+            # Reset session stats for new session (but preserve Unity constants and confidence)
+            # TODO: When landmarks/map data is added, preserve those here while resetting position
             stats = cache_data["session_stats"]
-            spatial_state.session_start = stats["session_start"]
-            spatial_state.total_distance_walked = stats["total_distance_walked"]
-            spatial_state.total_distance_run = stats["total_distance_run"]
-            spatial_state.position_confidence = stats["position_confidence"]
+            spatial_state.session_start = time.time()  # New session start time
+            spatial_state.total_distance_walked = 0.0  # Reset distance for new session
+            spatial_state.total_distance_run = 0.0     # Reset run distance for new session
+            spatial_state.position_confidence = stats["position_confidence"]  # Preserve confidence
             
-            # Log cache load
+            # Log cache load with position reset
             log_engine("spatial.cache.load", world_id=world_id, cache_file=cache_file,
-                      position={"x": spatial_state.position.x, "y": spatial_state.position.y},
+                      position_reset_to_spawn={"x": spatial_state.position.x, "y": spatial_state.position.y},
                       session_distance=spatial_state.total_distance_walked + spatial_state.total_distance_run)
             
             print(f"Spatial state loaded from cache for world: {world_id}")

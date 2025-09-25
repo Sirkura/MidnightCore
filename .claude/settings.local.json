@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//g/Experimental/Production/**)",
+      "Read(//g/Experimental/Production/.ProductionLogs/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
