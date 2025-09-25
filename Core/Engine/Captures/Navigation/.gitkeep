@@ -1,0 +1,3 @@
+# Navigation depth visualization images
+# This directory contains selective depth visualizations generated during major navigation decisions
+# Files are ignored in git but directory structure is preserved

@@ -14,12 +14,23 @@ ENV/
 Core/Modules/Social/VRChat-AI-Bot-main/
 Core/Modules/Social/VRChat-AI-Bot-ollama/
 
-# Logs (ignore everything inside, keep the folder)
-Core/Engine/Logging/**
+# Logs (ignore log files, keep directory structure)
+Core/Engine/Logging/modules/**/*.ndjson
+Core/Engine/Logging/modules/**/*.log
+Core/Engine/Logging/modules/**/*.out
+Core/Engine/Logging/*.ndjson
+Core/Engine/Logging/*.log
 !Core/Engine/Logging/.gitkeep
+!Core/Engine/Logging/modules/.gitkeep
+!Core/Engine/Logging/modules/**/.gitkeep
 
-# Captures (ignore everything inside, keep the folder)
-Core/Engine/Captures/**
+# Captures (ignore capture files, keep directory structure)
+Core/Engine/Captures/Navigation/**/*.png
+Core/Engine/Captures/Navigation/**/*.jpg
+Core/Engine/Captures/Navigation/**/*.jpeg
+Core/Engine/Captures/**/*.png
+Core/Engine/Captures/**/*.jpg
+Core/Engine/Captures/**/*.jpeg
 !Core/Engine/Captures/.gitkeep
 !Core/Engine/Captures/Navigation/.gitkeep
 
@@ -31,11 +42,20 @@ Core/Models/**
 Core/Engine/models/**
 !Core/Engine/models/.gitkeep
 
-# Cache and temporary files
+# Cache and temporary files (keep directories, ignore content)
+Core/Common/Cache/**/*.json
+Core/Common/Cache/**/*.log
+Core/Common/Cache/**/*.out
+Core/Common/Cache/**/*.tmp
+Core/Common/Cache/**/*.temp
+Core/Common/Cache/World_Data/**/*.json
+Core/Common/Cache/World_Data/**/*.log
+!Core/Common/Cache/.gitkeep
+!Core/Common/Cache/**/.gitkeep
+!Core/Common/Cache/World_Data/.gitkeep
+!Core/Common/Scripts/
 Core/Common/cache/**
 !Core/Common/cache/.gitkeep
-Core/Common/Cache/**
-!Core/Common/Cache/.gitkeep
 *.tmp
 *.temp
 .temp/
@@ -80,10 +100,13 @@ build/
 .mypy_cache/
 .tox/
 
-# Batch files (exclude personal convenience scripts, keep essential ones)
-*.bat
-!START_BETA.bat
-!STOP_BETA.bat
+# Batch files (remove unwanted, keep essential startup scripts)
+START_COMPLETE_AUTONOMY.bat
+EMERGENCY_STOP.bat
+GPTMovementTest.bat
+START_BETA.bat
+!Core/Engine/Startup/EMERGENCY_STOP.bat
+!Core/Engine/Startup/START_PORTABLE_AUTONOMY.bat
 
 # Output and generated files
 *.png
